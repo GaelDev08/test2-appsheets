@@ -170,12 +170,12 @@ export default function ComprasModule() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       {/* Header section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <ShoppingBag className="text-blue-600 w-7 h-7" /> Módulo de Compras y Lotes v2.0
+          <h1 className="text-lg lg:text-xl font-bold text-slate-900 flex items-center gap-2">
+            <ShoppingBag className="text-blue-600 w-5 h-5" /> Compras y Lotes
           </h1>
-          <p className="text-slate-5-00 text-sm mt-1">
+          <p className="text-slate-500 text-sm mt-1 font-normal">
             Gestión maestro-detalle de adquisiciones, acumulación de inversión por lote y productos.
           </p>
         </div>
