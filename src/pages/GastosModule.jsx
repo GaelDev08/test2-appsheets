@@ -268,20 +268,17 @@ export default function GastosModule() {
             </div>
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Lote *</label>
-              <input
-                type="text"
+              <select
                 required
-                list="lotes-gasto"
-                placeholder="Ej. LOTE-2026-A"
                 value={form.lote}
                 onChange={(e) => setForm({ ...form, lote: e.target.value })}
                 className={inputClass}
-              />
-              <datalist id="lotes-gasto">
+              >
+                <option value="">Selecciona un lote...</option>
                 {lotes.map((l) => (
-                  <option key={l} value={l} />
+                  <option key={l} value={l}>{l}</option>
                 ))}
-              </datalist>
+              </select>
             </div>
           </div>
 
