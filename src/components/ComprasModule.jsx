@@ -134,12 +134,12 @@ export default function ComprasModule() {
       if (errHeader) throw errHeader;
 
       // Step 2: Insert Detail Lines (BDPRODUCTOCOMPRA)
+      // 'total' es una columna GENERATED ALWAYS: la calcula PostgreSQL (cantidad * precio).
       const detailItems = items.map(item => ({
         id_compra: compraInserted.id,
         producto: item.producto_nombre || 'Producto General',
         cantidad: Number(item.cantidad),
-        precio: Number(item.precio),
-        total: Number(item.cantidad) * Number(item.precio)
+        precio: Number(item.precio)
       }));
 
       const { error: errDetails } = await supabase

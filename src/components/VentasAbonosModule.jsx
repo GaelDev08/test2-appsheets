@@ -168,12 +168,12 @@ export default function VentasAbonosModule() {
       if (errHeader) throw errHeader;
 
       // Insert Items
+      // 'total' es una columna GENERATED ALWAYS: la calcula PostgreSQL (cantidad * precio).
       const details = itemsVenta.map(item => ({
         id_venta: ventaInserted.id,
         producto: item.producto || 'Producto Venta',
         cantidad: Number(item.cantidad),
-        precio: Number(item.precio),
-        total: Number(item.cantidad) * Number(item.precio)
+        precio: Number(item.precio)
       }));
 
       const { error: errDetails } = await supabase.from('bd_producto_ventas').insert(details);
