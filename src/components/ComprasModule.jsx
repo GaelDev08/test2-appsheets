@@ -220,13 +220,16 @@ export default function ComprasModule() {
     setNotas(compra.notas || '');
     setProveedorId(compra.id_proveedor != null ? String(compra.id_proveedor) : '');
     setItems(
-      (compra.bd_producto_compras || []).map(p => ({
-        producto_id: '',
-        producto_nombre: p.producto,
-        cantidad: Number(p.cantidad),
-        precio: Number(p.precio),
-        total: Number(p.total)
-      }))
+      (compra.bd_producto_compras || []).map(p => {
+        const cat = productosCat.find(x => x.nombre === p.producto);
+        return {
+          producto_id: cat ? String(cat.id) : '',
+          producto_nombre: p.producto,
+          cantidad: Number(p.cantidad),
+          precio: Number(p.precio),
+          total: Number(p.total)
+        };
+      })
     );
     setEditCompra(compra);
     setShowModal(true);
