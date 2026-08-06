@@ -8,6 +8,7 @@ import GastosModule from './pages/GastosModule';
 import ProductosPage from './pages/ProductosPage';
 import ClientesPage from './pages/ClientesPage';
 import ProveedoresPage from './pages/ProveedoresPage';
+import CategoriasGastosPage from './pages/CategoriasGastosPage';
 import ReportesPage from './pages/ReportesPage';
 
 export default function App() {
@@ -39,6 +40,8 @@ export default function App() {
         return <ClientesPage key={key} />;
       case 'proveedores':
         return <ProveedoresPage key={key} />;
+      case 'categorias':
+        return <CategoriasGastosPage key={key} />;
       case 'reportes':
         return <ReportesPage key={key} />;
       default:

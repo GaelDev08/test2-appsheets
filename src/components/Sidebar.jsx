@@ -10,7 +10,8 @@ import {
   X, 
   ShieldCheck, 
   Users, 
-  Truck 
+  Truck,
+  Tag 
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }) {
@@ -22,6 +23,7 @@ export default function Sidebar({ activeTab, setActiveTab, sidebarOpen, setSideb
     { id: 'productos', label: 'Productos / Inventario', icon: Package },
     { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'proveedores', label: 'Proveedores', icon: Truck },
+    { id: 'categorias', label: 'Categorías de Gasto', icon: Tag },
     { id: 'reportes', label: 'Reportes y Analítica', icon: BarChart3 },
   ];
 
