@@ -9,7 +9,8 @@ import {
   Settings, 
   X, 
   ShieldCheck, 
-  UserCheck 
+  Users, 
+  Truck 
 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }) {
@@ -17,8 +18,10 @@ export default function Sidebar({ activeTab, setActiveTab, sidebarOpen, setSideb
     { id: 'dashboard', label: 'Panel de Control', icon: LayoutDashboard },
     { id: 'compras', label: 'Compras y Lotes', icon: ShoppingBag },
     { id: 'ventas', label: 'Ventas y Abonos', icon: Receipt },
-    { id: 'inventario', label: 'Inventario General', icon: Package },
     { id: 'gastos', label: 'Gastos Operativos', icon: DollarSign },
+    { id: 'productos', label: 'Productos / Inventario', icon: Package },
+    { id: 'clientes', label: 'Clientes', icon: Users },
+    { id: 'proveedores', label: 'Proveedores', icon: Truck },
     { id: 'reportes', label: 'Reportes y Analítica', icon: BarChart3 },
   ];
 

@@ -4,19 +4,11 @@ import Header from './components/Header';
 import DashboardPage from './pages/DashboardPage';
 import ComprasModule from './components/ComprasModule';
 import VentasAbonosModule from './components/VentasAbonosModule';
-import { Construction } from 'lucide-react';
-
-function PlaceholderPage({ title, description }) {
-  return (
-    <div className="p-4 lg:p-8">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
-        <Construction className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-        <h2 className="text-lg font-bold text-slate-800">{title}</h2>
-        <p className="text-sm text-slate-500 mt-2">{description}</p>
-      </div>
-    </div>
-  );
-}
+import GastosModule from './pages/GastosModule';
+import ProductosPage from './pages/ProductosPage';
+import ClientesPage from './pages/ClientesPage';
+import ProveedoresPage from './pages/ProveedoresPage';
+import ReportesPage from './pages/ReportesPage';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -31,36 +23,26 @@ export default function App() {
   };
 
   const renderPage = () => {
+    const key = `key-${refreshKey}`;
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardPage key={`dash-${refreshKey}`} />;
+        return <DashboardPage key={key} />;
       case 'compras':
-        return <ComprasModule key={`compras-${refreshKey}`} />;
+        return <ComprasModule key={key} />;
       case 'ventas':
-        return <VentasAbonosModule key={`ventas-${refreshKey}`} />;
-      case 'inventario':
-        return (
-          <PlaceholderPage
-            title="Inventario General"
-            description="Módulo de inventario de productos y stock disponible. Disponible en la próxima iteración."
-          />
-        );
+        return <VentasAbonosModule key={key} />;
       case 'gastos':
-        return (
-          <PlaceholderPage
-            title="Gastos Operativos"
-            description="Registro y control de gastos por lote. Disponible en la próxima iteración."
-          />
-        );
+        return <GastosModule key={key} />;
+      case 'productos':
+        return <ProductosPage key={key} />;
+      case 'clientes':
+        return <ClientesPage key={key} />;
+      case 'proveedores':
+        return <ProveedoresPage key={key} />;
       case 'reportes':
-        return (
-          <PlaceholderPage
-            title="Reportes y Analítica"
-            description="Reportes consolidados y analítica financiera. Disponible en la próxima iteración."
-          />
-        );
+        return <ReportesPage key={key} />;
       default:
-        return <DashboardPage key={`dash-${refreshKey}`} />;
+        return <DashboardPage key={key} />;
     }
   };
 

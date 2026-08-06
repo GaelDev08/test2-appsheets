@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { DollarSign, CreditCard, Plus, Receipt, UserCheck, Calendar, Search, CheckCircle2, Clock, AlertCircle, X } from 'lucide-react';
+import { DollarSign, Plus, Receipt, Calendar, Search, CheckCircle2, Clock, AlertCircle, X, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function VentasAbonosModule() {
   const [ventas, setVentas] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [productosCat, setProductosCat] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -14,22 +15,27 @@ export default function VentasAbonosModule() {
 
   // New Sale Modal State
   const [showVentaModal, setShowVentaModal] = useState(false);
+  const [editVenta, setEditVenta] = useState(null);
   const [fechaVenta, setFechaVenta] = useState(new Date().toISOString().split('T')[0]);
   const [factura, setFactura] = useState('');
   const [loteVenta, setLoteVenta] = useState('');
+  const [idCliente, setIdCliente] = useState('');
   const [cliente, setCliente] = useState('');
   const [notasVenta, setNotasVenta] = useState('');
   const [itemsVenta, setItemsVenta] = useState([
-    { producto: '', cantidad: 1, precio: 0, total: 0 }
+    { producto_id: '', producto: '', cantidad: 1, precio: 0, total: 0 }
   ]);
 
-  // New Abono Modal State
+  // Abono Modal State
   const [showAbonoModal, setShowAbonoModal] = useState(false);
   const [selectedVenta, setSelectedVenta] = useState(null);
   const [montoAbono, setMontoAbono] = useState('');
   const [fechaAbono, setFechaAbono] = useState(new Date().toISOString().split('T')[0]);
   const [notaAbono, setNotaAbono] = useState('');
   const [referenciaAbono, setReferenciaAbono] = useState('');
+
+  // Detail view
+  const [selectedVentaDetail, setSelectedVentaDetail] = useState(null);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -49,6 +55,7 @@ export default function VentasAbonosModule() {
           factura,
           lote,
           cliente,
+          id_cliente,
           notas,
           bd_producto_ventas (
             id,
@@ -72,12 +79,16 @@ export default function VentasAbonosModule() {
       // 2. Fetch Catalog Clientes
       const { data: dataClientes } = await supabase.from('cat_clientes').select('*').order('nombre');
 
-      // 3. Fetch unique lotes from compras
+      // 3. Fetch Catalog Productos
+      const { data: dataProductos } = await supabase.from('cat_productos').select('*').order('nombre');
+
+      // 4. Fetch unique lotes from compras
       const { data: dataCompras } = await supabase.from('bd_compras').select('lote');
       const uniqueLotes = Array.from(new Set((dataCompras || []).map(c => c.lote).filter(Boolean)));
 
       setVentas(dataVentas || []);
       setClientes(dataClientes || []);
+      setProductosCat(dataProductos || []);
       setLotes(uniqueLotes);
     } catch (err) {
       console.error('Error cargando modulo ventas:', err);
@@ -121,7 +132,7 @@ export default function VentasAbonosModule() {
 
   // Handle Add Item Sale Form
   const handleAddItemVenta = () => {
-    setItemsVenta([...itemsVenta, { producto: '', cantidad: 1, precio: 0, total: 0 }]);
+    setItemsVenta([...itemsVenta, { producto_id: '', producto: '', cantidad: 1, precio: 0, total: 0 }]);
   };
 
   const handleRemoveItemVenta = (idx) => {
@@ -133,6 +144,16 @@ export default function VentasAbonosModule() {
     const updated = [...itemsVenta];
     const current = { ...updated[idx], [field]: val };
 
+    if (field === 'producto_id') {
+      const prodObj = productosCat.find(p => String(p.id) === String(val));
+      if (prodObj) {
+        current.producto = prodObj.nombre;
+        current.precio = Number(prodObj.precio) || 0;
+      } else {
+        current.producto = '';
+      }
+    }
+
     if (field === 'cantidad' || field === 'precio') {
       const c = field === 'cantidad' ? Number(val) : Number(current.cantidad);
       const p = field === 'precio' ? Number(val) : Number(current.precio);
@@ -143,6 +164,12 @@ export default function VentasAbonosModule() {
     setItemsVenta(updated);
   };
 
+  const handleClienteChange = (val) => {
+    setIdCliente(val);
+    const clienteObj = clientes.find(c => String(c.id) === String(val));
+    setCliente(clienteObj ? clienteObj.nombre : '');
+  };
+
   const handleSaveVenta = async (e) => {
     e.preventDefault();
     if (!cliente.trim() || !loteVenta.trim()) {
@@ -151,26 +178,34 @@ export default function VentasAbonosModule() {
     }
 
     setIsSaving(true);
+    let ventaId = null;
     try {
-      // Insert Sale Header
-      const { data: ventaInserted, error: errHeader } = await supabase
-        .from('bd_ventas')
-        .insert([{
-          fecha: fechaVenta,
-          factura: factura.trim(),
-          lote: loteVenta.trim(),
-          cliente: cliente.trim(),
-          notas: notasVenta
-        }])
-        .select()
-        .single();
+      const header = {
+        fecha: fechaVenta,
+        factura: factura.trim(),
+        lote: loteVenta.trim(),
+        cliente: cliente.trim(),
+        id_cliente: idCliente ? Number(idCliente) : null,
+        notas: notasVenta,
+      };
 
-      if (errHeader) throw errHeader;
+      if (editVenta) {
+        const { error } = await supabase.from('bd_ventas').update(header).eq('id', editVenta.id);
+        if (error) throw error;
 
-      // Insert Items
-      // 'total' es una columna GENERATED ALWAYS: la calcula PostgreSQL (cantidad * precio).
+        const { error: errDel } = await supabase.from('bd_producto_ventas').delete().eq('id_venta', editVenta.id);
+        if (errDel) throw errDel;
+
+        ventaId = editVenta.id;
+      } else {
+        const { data: ventaInserted, error } = await supabase.from('bd_ventas').insert([header]).select().single();
+        if (error) throw error;
+        ventaId = ventaInserted.id;
+      }
+
+      // Insert Items ('total' es GENERATED ALWAYS)
       const details = itemsVenta.map(item => ({
-        id_venta: ventaInserted.id,
+        id_venta: ventaId,
         producto: item.producto || 'Producto Venta',
         cantidad: Number(item.cantidad),
         precio: Number(item.precio)
@@ -180,6 +215,7 @@ export default function VentasAbonosModule() {
       if (errDetails) throw errDetails;
 
       setShowVentaModal(false);
+      setEditVenta(null);
       resetVentaForm();
       fetchData();
     } catch (err) {
@@ -190,13 +226,59 @@ export default function VentasAbonosModule() {
     }
   };
 
+  const openNewVenta = () => {
+    resetVentaForm();
+    setEditVenta(null);
+    setShowVentaModal(true);
+  };
+
+  const openEditVenta = (v) => {
+    setFechaVenta(v.fecha);
+    setFactura(v.factura || '');
+    setLoteVenta(v.lote);
+    setNotasVenta(v.notas || '');
+    if (v.id_cliente != null) {
+      setIdCliente(String(v.id_cliente));
+    } else {
+      const found = clientes.find(c => c.nombre === v.cliente);
+      setIdCliente(found ? String(found.id) : '');
+    }
+    setCliente(v.cliente);
+    setItemsVenta(
+      (v.bd_producto_ventas || []).map(p => {
+        const cat = productosCat.find(x => x.nombre === p.producto);
+        return {
+          producto_id: cat ? String(cat.id) : '',
+          producto: p.producto,
+          cantidad: Number(p.cantidad),
+          precio: Number(p.precio),
+          total: Number(p.total)
+        };
+      })
+    );
+    setEditVenta(v);
+    setShowVentaModal(true);
+  };
+
+  const handleDeleteVenta = async (v) => {
+    if (!window.confirm(`¿Eliminar la venta ${v.factura ? v.factura : '#' + v.id}?\nLos abonos asociados se eliminarán en cascada.`)) return;
+    const { error } = await supabase.from('bd_ventas').delete().eq('id', v.id);
+    if (error) {
+      alert('No se pudo eliminar: ' + error.message);
+      return;
+    }
+    if (selectedVentaDetail?.id === v.id) setSelectedVentaDetail(null);
+    fetchData();
+  };
+
   const resetVentaForm = () => {
     setFechaVenta(new Date().toISOString().split('T')[0]);
     setFactura('');
     setLoteVenta('');
+    setIdCliente('');
     setCliente('');
     setNotasVenta('');
-    setItemsVenta([{ producto: '', cantidad: 1, precio: 0, total: 0 }]);
+    setItemsVenta([{ producto_id: '', producto: '', cantidad: 1, precio: 0, total: 0 }]);
   };
 
   const handleOpenAbono = (v) => {
@@ -239,6 +321,19 @@ export default function VentasAbonosModule() {
     }
   };
 
+  const handleDeleteAbono = async (abono) => {
+    if (!window.confirm('¿Eliminar este abono?')) return;
+    const { error } = await supabase.from('bd_abonos').delete().eq('id', abono.id);
+    if (error) {
+      alert('No se pudo eliminar el abono: ' + error.message);
+      return;
+    }
+    fetchData();
+  };
+
+  const inputClass =
+    'w-full px-3 py-2 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 bg-white';
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -252,7 +347,7 @@ export default function VentasAbonosModule() {
           </p>
         </div>
         <button
-          onClick={() => { resetVentaForm(); setShowVentaModal(true); }}
+          onClick={openNewVenta}
           className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-xl transition shadow-md hover:shadow-lg"
         >
           <Plus className="w-5 h-5" /> Nueva Venta
@@ -343,7 +438,7 @@ export default function VentasAbonosModule() {
                   <th className="p-4 text-right">Abonado</th>
                   <th className="p-4 text-right">Saldo Pendiente</th>
                   <th className="p-4 text-center">Estado</th>
-                  <th className="p-4 text-center">Acción</th>
+                  <th className="p-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -391,13 +486,37 @@ export default function VentasAbonosModule() {
                         )}
                       </td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() => handleOpenAbono(venta)}
-                          disabled={saldoPendiente <= 0}
-                          className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg transition inline-flex items-center gap-1"
-                        >
-                          <DollarSign className="w-3.5 h-3.5" /> Abonar
-                        </button>
+                        <div className="inline-flex items-center gap-1.5 justify-center">
+                          <button
+                            onClick={() => setSelectedVentaDetail(venta)}
+                            title="Ver detalle"
+                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenAbono(venta)}
+                            disabled={saldoPendiente <= 0}
+                            title={saldoPendiente <= 0 ? 'Venta pagada' : 'Registrar abono'}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition disabled:opacity-30"
+                          >
+                            <DollarSign className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEditVenta(venta)}
+                            title="Editar venta"
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVenta(venta)}
+                            title="Eliminar venta"
+                            className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -408,13 +527,14 @@ export default function VentasAbonosModule() {
         )}
       </div>
 
-      {/* Modal Registrar Venta */}
+      {/* Modal Registrar/Editar Venta */}
       {showVentaModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[90vh] flex flex-col">
             <div className="px-6 py-4 bg-emerald-900 text-white flex justify-between items-center">
               <h3 className="font-bold text-lg flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-400" /> Registrar Nueva Venta
+                <Receipt className="w-5 h-5 text-emerald-400" />
+                {editVenta ? `Editar Venta #${editVenta.id}` : 'Registrar Nueva Venta'}
               </h3>
               <button onClick={() => setShowVentaModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-6 h-6" />
@@ -430,7 +550,7 @@ export default function VentasAbonosModule() {
                     required
                     value={fechaVenta}
                     onChange={(e) => setFechaVenta(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -440,30 +560,39 @@ export default function VentasAbonosModule() {
                     placeholder="Ej. FAC-0012"
                     value={factura}
                     onChange={(e) => setFactura(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl text-sm"
+                    className={inputClass}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Cliente *</label>
-                  <input
-                    type="text"
+                  <select
                     required
-                    placeholder="Nombre del cliente"
-                    value={cliente}
-                    onChange={(e) => setCliente(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl text-sm"
-                  />
+                    value={idCliente}
+                    onChange={(e) => handleClienteChange(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Selecciona un cliente...</option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Lote Origen *</label>
                   <input
                     type="text"
                     required
+                    list="lotes-venta"
                     placeholder="Ej. LOTE-2026-A"
                     value={loteVenta}
                     onChange={(e) => setLoteVenta(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-xl text-sm font-semibold text-indigo-700"
+                    className={`${inputClass} font-semibold text-indigo-700`}
                   />
+                  <datalist id="lotes-venta">
+                    {lotes.map((l) => (
+                      <option key={l} value={l} />
+                    ))}
+                  </datalist>
                 </div>
               </div>
 
@@ -482,13 +611,18 @@ export default function VentasAbonosModule() {
 
                 {itemsVenta.map((item, idx) => (
                   <div key={idx} className="flex flex-col sm:flex-row gap-2 bg-white p-3 rounded-xl border">
-                    <input
-                      type="text"
-                      placeholder="Producto"
-                      value={item.producto}
-                      onChange={(e) => handleItemVentaChange(idx, 'producto', e.target.value)}
-                      className="flex-1 text-sm border p-2 rounded-lg"
-                    />
+                    <select
+                      value={item.producto_id}
+                      onChange={(e) => handleItemVentaChange(idx, 'producto_id', e.target.value)}
+                      className="flex-1 text-sm border p-2 rounded-lg bg-white"
+                    >
+                      <option value="">Selecciona un producto...</option>
+                      {productosCat.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre} — ${Number(p.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="number"
                       min="1"
@@ -508,6 +642,14 @@ export default function VentasAbonosModule() {
                     <div className="w-28 text-right font-bold text-slate-800 py-2">
                       ${(item.cantidad * item.precio || 0).toFixed(2)}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItemVenta(idx)}
+                      disabled={itemsVenta.length === 1}
+                      className="p-2 text-rose-500 disabled:opacity-30"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -517,7 +659,7 @@ export default function VentasAbonosModule() {
                   Cancelar
                 </button>
                 <button type="submit" disabled={isSaving} className="px-6 py-2 text-sm bg-emerald-600 text-white font-semibold rounded-xl">
-                  {isSaving ? 'Guardando...' : 'Guardar Venta'}
+                  {isSaving ? 'Guardando...' : editVenta ? 'Guardar Cambios' : 'Guardar Venta'}
                 </button>
               </div>
             </form>
@@ -525,13 +667,13 @@ export default function VentasAbonosModule() {
         </div>
       )}
 
-      {/* Modal Registrar Abono */}
+      {/* Modal Abonos */}
       {showAbonoModal && selectedVenta && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
               <div>
-                <h3 className="font-bold text-lg">Registrar Abono</h3>
+                <h3 className="font-bold text-lg">Abonos de Venta</h3>
                 <p className="text-xs text-slate-400">Cliente: {selectedVenta.cliente} | Lote: {selectedVenta.lote}</p>
               </div>
               <button onClick={() => setShowAbonoModal(false)} className="text-slate-400 hover:text-white">
@@ -539,61 +681,153 @@ export default function VentasAbonosModule() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveAbono} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Monto del Abono ($) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={montoAbono}
-                  onChange={(e) => setMontoAbono(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl text-lg font-bold text-emerald-600 focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              {/* Existing abonos */}
+              {(selectedVenta.bd_abonos || []).length > 0 && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 font-semibold border-b">
+                        <th className="p-3 text-[10px] font-semibold uppercase tracking-wider">Fecha</th>
+                        <th className="p-3 text-[10px] font-semibold uppercase tracking-wider">Monto</th>
+                        <th className="p-3 text-[10px] font-semibold uppercase tracking-wider">Ref.</th>
+                        <th className="p-3 text-right"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(selectedVenta.bd_abonos || []).map((ab) => (
+                        <tr key={ab.id}>
+                          <td className="p-3 text-slate-600">{ab.fecha}</td>
+                          <td className="p-3 font-bold text-emerald-600">${Number(ab.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-xs text-slate-400">{ab.referencia || '-'}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              onClick={() => handleDeleteAbono(ab)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                              title="Eliminar abono"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Fecha de Abono *</label>
-                <input
-                  type="date"
-                  required
-                  value={fechaAbono}
-                  onChange={(e) => setFechaAbono(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl text-sm"
-                />
-              </div>
+              {/* New abono form */}
+              <form onSubmit={handleSaveAbono} className="space-y-4 border-t border-slate-100 pt-4">
+                <h4 className="font-bold text-slate-700 text-sm">Registrar Nuevo Abono</h4>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Monto del Abono ($) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={montoAbono}
+                    onChange={(e) => setMontoAbono(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl text-lg font-bold text-emerald-600 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Referencia / Comprobante</label>
-                <input
-                  type="text"
-                  placeholder="Ej. Transferencia #98231"
-                  value={referenciaAbono}
-                  onChange={(e) => setReferenciaAbono(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl text-sm"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Fecha de Abono *</label>
+                  <input
+                    type="date"
+                    required
+                    value={fechaAbono}
+                    onChange={(e) => setFechaAbono(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl text-sm outline-none"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Notas</label>
-                <input
-                  type="text"
-                  placeholder="Nota adicional..."
-                  value={notaAbono}
-                  onChange={(e) => setNotaAbono(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl text-sm"
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Referencia / Comprobante</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Transferencia #98231"
+                    value={referenciaAbono}
+                    onChange={(e) => setReferenciaAbono(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl text-sm outline-none"
+                  />
+                </div>
 
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowAbonoModal(false)} className="px-4 py-2 text-sm text-slate-600">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={isSaving} className="px-6 py-2 text-sm bg-emerald-600 text-white font-semibold rounded-xl">
-                  {isSaving ? 'Guardando...' : 'Confirmar Abono'}
-                </button>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Notas</label>
+                  <input
+                    type="text"
+                    placeholder="Nota adicional..."
+                    value={notaAbono}
+                    onChange={(e) => setNotaAbono(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-xl text-sm outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => setShowAbonoModal(false)} className="px-4 py-2 text-sm text-slate-600">
+                    Cerrar
+                  </button>
+                  <button type="submit" disabled={isSaving} className="px-6 py-2 text-sm bg-emerald-600 text-white font-semibold rounded-xl">
+                    {isSaving ? 'Guardando...' : 'Confirmar Abono'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detalle Venta */}
+      {selectedVentaDetail && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-lg">Detalle de Venta {selectedVentaDetail.factura ? selectedVentaDetail.factura : '#' + selectedVentaDetail.id}</h3>
+                <p className="text-xs text-slate-400">
+                  Cliente: <span className="font-bold text-emerald-300">{selectedVentaDetail.cliente}</span> | Lote: <span className="font-bold text-indigo-300">{selectedVentaDetail.lote}</span> | {selectedVentaDetail.fecha}
+                </p>
               </div>
-            </form>
+              <button onClick={() => setSelectedVentaDetail(null)} className="text-slate-400 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 font-semibold border-b">
+                    <th className="p-3 text-left">Producto</th>
+                    <th className="p-3 text-center">Cantidad</th>
+                    <th className="p-3 text-right">Precio Unit.</th>
+                    <th className="p-3 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(selectedVentaDetail.bd_producto_ventas || []).map((p, i) => (
+                    <tr key={i}>
+                      <td className="p-3 font-medium text-slate-800">{p.producto}</td>
+                      <td className="p-3 text-center">{p.cantidad}</td>
+                      <td className="p-3 text-right">${Number(p.precio).toFixed(2)}</td>
+                      <td className="p-3 text-right font-bold text-slate-800">${Number(p.total).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {selectedVentaDetail.notas && (
+                <p className="text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border">
+                  <strong>Notas:</strong> {selectedVentaDetail.notas}
+                </p>
+              )}
+            </div>
+            <div className="p-4 bg-slate-50 border-t text-right">
+              <button
+                onClick={() => setSelectedVentaDetail(null)}
+                className="px-4 py-2 bg-slate-800 text-white rounded-xl text-sm font-semibold"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

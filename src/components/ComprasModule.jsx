@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Plus, ShoppingBag, Layers, Calendar, DollarSign, Trash2, Eye, X, CheckCircle } from 'lucide-react';
+import { Plus, ShoppingBag, Layers, Calendar, Trash2, Eye, X, Pencil } from 'lucide-react';
 
 export default function ComprasModule() {
   const [compras, setCompras] = useState([]);
   const [productosCat, setProductosCat] = useState([]);
+  const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [selectedCompra, setSelectedCompra] = useState(null);
+  const [editCompra, setEditCompra] = useState(null);
   const [lotesSummary, setLotesSummary] = useState({});
 
   // Form State
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [lote, setLote] = useState('');
   const [notas, setNotas] = useState('');
+  const [proveedorId, setProveedorId] = useState('');
   const [items, setItems] = useState([
     { producto_id: '', producto_nombre: '', cantidad: 1, precio: 0, total: 0 }
   ]);
@@ -34,6 +37,8 @@ export default function ComprasModule() {
           fecha,
           lote,
           notas,
+          id_proveedor,
+          proveedor,
           bd_producto_compras (
             id,
             cantidad,
@@ -54,9 +59,18 @@ export default function ComprasModule() {
 
       if (errProds) console.error('Error cargando catálogo de productos:', errProds);
 
+      // 3. Fetch Proveedores Catalog
+      const { data: dataProvs, error: errProvs } = await supabase
+        .from('cat_proveedores')
+        .select('*')
+        .order('nombre');
+
+      if (errProvs) console.error('Error cargando catálogo de proveedores:', errProvs);
+
       const comprasFormatted = dataCompras || [];
       setCompras(comprasFormatted);
       setProductosCat(dataProds || []);
+      setProveedores(dataProvs || []);
 
       // Calculate lot summaries
       const summary = {};
@@ -95,9 +109,9 @@ export default function ComprasModule() {
       const prodObj = productosCat.find(p => String(p.id) === String(value));
       if (prodObj) {
         current.producto_nombre = prodObj.nombre;
-        if (!current.precio || current.precio === 0) {
-          current.precio = Number(prodObj.precio) || 0;
-        }
+        current.precio = Number(prodObj.precio) || 0;
+      } else {
+        current.producto_nombre = '';
       }
     }
 
@@ -115,6 +129,14 @@ export default function ComprasModule() {
     return items.reduce((sum, item) => sum + (Number(item.cantidad) * Number(item.precio) || 0), 0);
   };
 
+  const getProveedorPayload = () => {
+    const provObj = proveedores.find(p => String(p.id) === String(proveedorId));
+    return {
+      proveedor: provObj ? provObj.nombre : '',
+      id_proveedor: provObj ? provObj.id : null
+    };
+  };
+
   const handleSaveCompra = async (e) => {
     e.preventDefault();
     if (!lote.trim()) {
@@ -123,20 +145,45 @@ export default function ComprasModule() {
     }
 
     setIsSaving(true);
+    let compraId = null;
+    const provPayload = getProveedorPayload();
     try {
-      // Step 1: Insert Master Header (BDCOMPRA)
-      const { data: compraInserted, error: errHeader } = await supabase
-        .from('bd_compras')
-        .insert([{ fecha, lote: lote.trim(), notas }])
-        .select()
-        .single();
+      if (editCompra) {
+        // ---- MODO EDICIÓN ----
+        // 1. Actualizar encabezado (BDCOMPRA)
+        const { error: errHeader } = await supabase
+          .from('bd_compras')
+          .update({ fecha, lote: lote.trim(), notas, ...provPayload })
+          .eq('id', editCompra.id);
 
-      if (errHeader) throw errHeader;
+        if (errHeader) throw errHeader;
 
-      // Step 2: Insert Detail Lines (BDPRODUCTOCOMPRA)
-      // 'total' es una columna GENERATED ALWAYS: la calcula PostgreSQL (cantidad * precio).
+        // 2. Eliminar líneas de detalle previas (para reinsertarlas limpiamente)
+        const { error: errDeleteOld } = await supabase
+          .from('bd_producto_compras')
+          .delete()
+          .eq('id_compra', editCompra.id);
+
+        if (errDeleteOld) throw errDeleteOld;
+
+        compraId = editCompra.id;
+      } else {
+        // ---- MODO NUEVO ----
+        // 1. Insertar encabezado (BDCOMPRA)
+        const { data: compraInserted, error: errHeader } = await supabase
+          .from('bd_compras')
+          .insert([{ fecha, lote: lote.trim(), notas, ...provPayload }])
+          .select()
+          .single();
+
+        if (errHeader) throw errHeader;
+        compraId = compraInserted.id;
+      }
+
+      // Paso final: insertar las líneas de detalle (BDPRODUCTOCOMPRA)
+      // 'total' es GENERATED ALWAYS: lo calcula PostgreSQL (cantidad * precio).
       const detailItems = items.map(item => ({
-        id_compra: compraInserted.id,
+        id_compra: compraId,
         producto: item.producto_nombre || 'Producto General',
         cantidad: Number(item.cantidad),
         precio: Number(item.precio)
@@ -150,6 +197,7 @@ export default function ComprasModule() {
 
       // Reset form & reload
       setShowModal(false);
+      setEditCompra(null);
       resetForm();
       fetchData();
     } catch (err) {
@@ -160,10 +208,55 @@ export default function ComprasModule() {
     }
   };
 
+  const openNewCompra = () => {
+    resetForm();
+    setEditCompra(null);
+    setShowModal(true);
+  };
+
+  const openEditCompra = (compra) => {
+    setFecha(compra.fecha);
+    setLote(compra.lote);
+    setNotas(compra.notas || '');
+    setProveedorId(compra.id_proveedor != null ? String(compra.id_proveedor) : '');
+    setItems(
+      (compra.bd_producto_compras || []).map(p => ({
+        producto_id: '',
+        producto_nombre: p.producto,
+        cantidad: Number(p.cantidad),
+        precio: Number(p.precio),
+        total: Number(p.total)
+      }))
+    );
+    setEditCompra(compra);
+    setShowModal(true);
+  };
+
+  const handleDeleteCompra = async (compra) => {
+    if (!window.confirm(`¿Eliminar la compra #${compra.id} del lote "${compra.lote}"?\nLos productos y la inversión asociada se eliminarán.`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('bd_compras')
+        .delete()
+        .eq('id', compra.id);
+
+      if (error) throw error;
+
+      if (selectedCompra?.id === compra.id) setSelectedCompra(null);
+      fetchData();
+    } catch (err) {
+      console.error('Error eliminando la compra:', err);
+      alert('Ocurrió un error al eliminar: ' + err.message);
+    }
+  };
+
   const resetForm = () => {
     setFecha(new Date().toISOString().split('T')[0]);
     setLote('');
     setNotas('');
+    setProveedorId('');
     setItems([{ producto_id: '', producto_nombre: '', cantidad: 1, precio: 0, total: 0 }]);
   };
 
@@ -180,7 +273,7 @@ export default function ComprasModule() {
           </p>
         </div>
         <button
-          onClick={() => { resetForm(); setShowModal(true); }}
+          onClick={openNewCompra}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-xl transition shadow-md hover:shadow-lg"
         >
           <Plus className="w-5 h-5" /> Nueva Compra
@@ -243,6 +336,7 @@ export default function ComprasModule() {
                   <th className="p-4">ID</th>
                   <th className="p-4">Fecha</th>
                   <th className="p-4">Lote</th>
+                  <th className="p-4">Proveedor</th>
                   <th className="p-4">Productos</th>
                   <th className="p-4 text-right">Inversión Total</th>
                   <th className="p-4">Notas</th>
@@ -270,6 +364,7 @@ export default function ComprasModule() {
                           {compra.lote}
                         </span>
                       </td>
+                      <td className="p-4 text-slate-600">{compra.proveedor || '-'}</td>
                       <td className="p-4 text-slate-600">
                         <span className="font-semibold text-slate-800">{itemsCount}</span> ítem(s)
                       </td>
@@ -278,12 +373,29 @@ export default function ComprasModule() {
                       </td>
                       <td className="p-4 text-slate-500 max-w-xs truncate">{compra.notas || '-'}</td>
                       <td className="p-4 text-center">
-                        <button
-                          onClick={() => setSelectedCompra(compra)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> Detalle
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedCompra(compra)}
+                            title="Ver detalle"
+                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => openEditCompra(compra)}
+                            title="Editar compra"
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCompra(compra)}
+                            title="Eliminar compra"
+                            className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -302,7 +414,8 @@ export default function ComprasModule() {
             <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-lg flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-blue-400" /> Registrar Nueva Compra de Lote
+                  <ShoppingBag className="w-5 h-5 text-blue-400" />
+                  {editCompra ? `Editar Compra #${editCompra.id}` : 'Registrar Nueva Compra de Lote'}
                 </h3>
                 <p className="text-xs text-slate-400">Ingreso maestro-detalle con productos y costos</p>
               </div>
@@ -336,11 +449,24 @@ export default function ComprasModule() {
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm font-semibold text-indigo-700"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Proveedor</label>
+                  <select
+                    value={proveedorId}
+                    onChange={(e) => setProveedorId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                  >
+                    <option value="">Selecciona un proveedor</option>
+                    {proveedores.map((p) => (
+                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Notas / Observaciones</label>
                   <input
                     type="text"
-                    placeholder="Ej. Proveedor mayorista, flete incluido"
+                    placeholder="Ej. Flete incluido, pago a 30 días"
                     value={notas}
                     onChange={(e) => setNotas(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
@@ -366,13 +492,18 @@ export default function ComprasModule() {
                     <div key={idx} className="flex flex-col sm:flex-row items-center gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
                       <div className="flex-1 w-full">
                         <label className="block text-[10px] text-slate-400 font-bold uppercase">Producto</label>
-                        <input
-                          type="text"
-                          placeholder="Nombre del producto"
-                          value={item.producto_nombre}
-                          onChange={(e) => handleItemChange(idx, 'producto_nombre', e.target.value)}
-                          className="w-full text-sm font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500"
-                        />
+                        <select
+                          value={item.producto_id}
+                          onChange={(e) => handleItemChange(idx, 'producto_id', e.target.value)}
+                          className="w-full text-sm font-medium border border-slate-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-500 bg-white"
+                        >
+                          <option value="">Selecciona un producto...</option>
+                          {productosCat.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre} — ${Number(p.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="w-full sm:w-28">
@@ -442,7 +573,7 @@ export default function ComprasModule() {
                   disabled={isSaving}
                   className="px-6 py-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition disabled:opacity-50"
                 >
-                  {isSaving ? 'Guardando...' : 'Guardar Compra'}
+                  {isSaving ? 'Guardando...' : editCompra ? 'Guardar Cambios' : 'Guardar Compra'}
                 </button>
               </div>
             </form>
