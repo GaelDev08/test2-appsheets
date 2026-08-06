@@ -461,7 +461,7 @@ export default function ComprasModule() {
                   >
                     <option value="">Selecciona un proveedor</option>
                     {proveedores.map((p) => (
-                      <option key={p.id} value={p.id}>{p.nombre}</option>
+                      <option key={p.id} value={String(p.id)}>{p.nombre}</option>
                     ))}
                   </select>
                 </div>
@@ -502,7 +502,7 @@ export default function ComprasModule() {
                         >
                           <option value="">Selecciona un producto...</option>
                           {productosCat.map((p) => (
-                            <option key={p.id} value={p.id}>
+                            <option key={p.id} value={String(p.id)}>
                               {p.nombre} — ${Number(p.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                             </option>
                           ))}

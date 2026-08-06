@@ -573,7 +573,7 @@ export default function VentasAbonosModule() {
                   >
                     <option value="">Selecciona un cliente...</option>
                     {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                      <option key={c.id} value={String(c.id)}>{c.nombre}</option>
                     ))}
                   </select>
                 </div>
@@ -618,7 +618,7 @@ export default function VentasAbonosModule() {
                     >
                       <option value="">Selecciona un producto...</option>
                       {productosCat.map((p) => (
-                        <option key={p.id} value={p.id}>
+                        <option key={p.id} value={String(p.id)}>
                           {p.nombre} — ${Number(p.precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                         </option>
                       ))}
